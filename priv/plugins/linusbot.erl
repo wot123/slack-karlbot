@@ -15,7 +15,7 @@
 
 -record(state, {}).
 
--define(STARTUPTEXT, "linusbot: started").
+-define(STARTUPTEXT, "linusbot: started 2").
 -define(HELPTEXT, "linusbot: I just abuse people that say 'pull-request' in anyway").
 -define(QUOTES, ["Christ people. This is just shit.",
                  "Anybody who thinks that code is a) legible, b) efficient or c) safe is just incompetent and out to lunch.",

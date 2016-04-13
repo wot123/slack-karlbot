@@ -59,7 +59,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, [{token, Token}]} = file:consult('priv/slack.config'),
+    {ok, [{token, Token}]} = file:consult(code:priv_dir(karlbot) ++ '/slack.config'),
     {ok, Pid} = gun:open("slack.com", 443),
     StreamRef = gun:get(Pid, "/api/rtm.start?token=" ++ Token),
     {ok, Body} = gun:await_body(Pid, StreamRef, 10000),
@@ -142,8 +142,8 @@ handle_info({gun_ws, _Pid, {text, Text}}, State) ->
     syn:publish(slack_messages, Json),
     {noreply, State};
 
-handle_info(Info, State) ->
-    lager:info("info: ~p", [Info]),
+handle_info(_Info, State) ->
+    %lager:info("info: ~p", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -215,6 +215,15 @@ find_bot_id(Data, Name) ->
     Bots = proplists:get_value(<<"bots">>,Data),
     get_bot(Bots, Name).
 
+maybe_reload_module(["Karl","reload",Text],ChannelId) ->
+    Module = list_to_atom(Text),
+    {ok, Module, Binary} = compile:file(code:priv_dir(karlbot) ++ "/plugins/" ++ Text ++ ".erl", binary),
+    T = code:load_binary(Module, "nofile", Binary),
+    slack_client:send_term(ChannelId, T);
+
+maybe_reload_module(_,_) ->
+    ok.
+
 maybe_list_modules(["Karl","list","modules"], ChannelId) ->
     T = supervisor:which_children(module_sup),
     slack_client:send_term(ChannelId, T),
@@ -237,6 +246,7 @@ maybe_stop_module(_,_) ->
     ok.
 
 process_command(Text,ChannelId) ->
+    maybe_reload_module(Text, ChannelId),
     maybe_list_modules(Text, ChannelId),
     maybe_start_module(Text, ChannelId),
     maybe_stop_module(Text, ChannelId).
