@@ -13,9 +13,10 @@
          terminate/2,
          code_change/3]).
 
--export([send_message/2, get_team_data/0, find_channel/1]).
+-export([send_message/2,send_term/2, get_team_data/0, find_channel/1]).
 
--record(state, {pid, ws_pid, teamdata, token, message_id}).
+-record(state, {pid, ws_pid, teamdata, token, message_id, my_user_id, my_handle}).
+
 
 %%%===================================================================
 %%% API functions
@@ -26,6 +27,8 @@ find_channel(Name) ->
 
 send_message(Channel, Message) ->
     gen_server:cast(?MODULE, {send_message, Channel, Message}).
+send_term(Channel, Term) ->
+    gen_server:cast(?MODULE, {send_term, Channel, Term}).
 
 get_team_data() ->
     gen_server:call(?MODULE, {get_team_data}).
@@ -62,8 +65,10 @@ init([]) ->
     {ok, Body} = gun:await_body(Pid, StreamRef, 10000),
     TeamData = jsx:decode(Body),
     WsPid = make_ws_connection(proplists:get_value(<<"url">>,TeamData, false)),
+    syn:join(slack_messages, self()),
     {ok, #state{pid=Pid, ws_pid=WsPid, teamdata=TeamData, 
                 token=Token, message_id=0}}.
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -101,6 +106,11 @@ handle_call(Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({send_term, ChannelId, Term}, State) ->
+    R= io_lib:format("~p",[Term]),
+    ws_send_message(ChannelId, lists:flatten(R), State),
+    {noreply, State};
+
 handle_cast({send_message, ChannelId, Message}, State) ->
     ws_send_message(ChannelId, Message, State),
     {noreply, State};
@@ -119,6 +129,14 @@ handle_cast(Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info([{<<"type">>,<<"message">>},
+             {<<"channel">>,ChannelId},
+             {<<"user">>,_Userid},
+             {<<"text">>, Text},_,_], State) ->
+    
+    process_command(string:tokens(binary_to_list(Text)," "),ChannelId),
+    {noreply, State};
+
 handle_info({gun_ws, _Pid, {text, Text}}, State) ->
     Json = jsx:decode(Text),
     syn:publish(slack_messages, Json),
@@ -185,3 +203,41 @@ ws_send_message(ChannelId, Message, State) ->
                        {<<"channel">>, ChannelId},
                        {<<"text">>, list_to_binary(Message)}]),
     gun:ws_send(State#state.ws_pid, {text, Json}).
+
+get_bot([], _) ->
+    false;
+get_bot([[{<<"id">>,Id},{<<"deleted">>,_},{<<"name">>,Name}|_]|_], Name) ->
+    Id;
+get_bot([_|T], Name) ->
+    get_bot(T,Name).
+
+find_bot_id(Data, Name) ->
+    Bots = proplists:get_value(<<"bots">>,Data),
+    get_bot(Bots, Name).
+
+maybe_list_modules(["Karl","list","modules"], ChannelId) ->
+    T = supervisor:which_children(module_sup),
+    slack_client:send_term(ChannelId, T),
+    ok;
+maybe_list_modules(_,_) ->
+    ok.
+
+maybe_start_module(["Karl","start",Module], ChannelId) ->
+    T = module_sup:start_module(Module,ChannelId),
+    slack_client:send_term(ChannelId, T),
+    ok;
+maybe_start_module(_,_) ->
+    ok.
+
+maybe_stop_module(["Karl","stop",Module], ChannelId) ->
+    R = module_sup:stop_module(Module),
+    slack_client:send_term(ChannelId, R),
+    ok;
+maybe_stop_module(_,_) ->
+    ok.
+
+process_command(Text,ChannelId) ->
+    maybe_list_modules(Text, ChannelId),
+    maybe_start_module(Text, ChannelId),
+    maybe_stop_module(Text, ChannelId).
+

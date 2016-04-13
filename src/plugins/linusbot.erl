@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API functions
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -15,6 +15,8 @@
 
 -record(state, {}).
 
+-define(STARTUPTEXT, "linusbot: started").
+-define(HELPTEXT, "linusbot: I just abuse people that say 'pull-request' in anyway").
 -define(QUOTES, ["Christ people. This is just shit.",
                  "Anybody who thinks that code is a) legible, b) efficient or c) safe is just incompetent and out to lunch.",
                  "It looks bad, and there is no reason for it.",
@@ -45,8 +47,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+start_link(ChannelId) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [ChannelId], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -63,8 +65,10 @@ start_link() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([]) ->
+init([ChannelId]) ->
     syn:join(slack_messages, self()),
+    slack_client:send_message(ChannelId,?STARTUPTEXT),
+    slack_client:send_message(ChannelId,?HELPTEXT),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------

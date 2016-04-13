@@ -16,6 +16,7 @@
 
 start(_StartType, _StartArgs) ->
     syn:init(),
+    module_sup:start_link(),
     karlbot_sup:start_link().
 
 %%--------------------------------------------------------------------
