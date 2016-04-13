@@ -18,6 +18,13 @@
 -record(state, {pid, ws_pid, teamdata, token, message_id, my_user_id, my_handle}).
 
 
+-define(HELPTEXT,"karlbot core commands: \n" ++
+                 "list modules\n" ++
+                 "start module\n" ++
+                 "stop module\n" ++
+                 "reload module\n").
+        
+
 %%%===================================================================
 %%% API functions
 %%%===================================================================
@@ -215,6 +222,18 @@ find_bot_id(Data, Name) ->
     Bots = proplists:get_value(<<"bots">>,Data),
     get_bot(Bots, Name).
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% slack commands
+%%
+
+
+maybe_show_help(["Karl","help"], ChannelId) ->
+    slack_client:send_message(ChannelId, ?HELPTEXT);
+
+maybe_show_help(_,_) ->
+    ok.
+
 maybe_reload_module(["Karl","reload",Text],ChannelId) ->
     Module = list_to_atom(Text),
     {ok, Module, Binary} = compile:file(code:priv_dir(karlbot) ++ "/plugins/" ++ Text ++ ".erl", binary),
@@ -246,6 +265,7 @@ maybe_stop_module(_,_) ->
     ok.
 
 process_command(Text,ChannelId) ->
+    maybe_show_help(Text, ChannelId),
     maybe_reload_module(Text, ChannelId),
     maybe_list_modules(Text, ChannelId),
     maybe_start_module(Text, ChannelId),
