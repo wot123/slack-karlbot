@@ -1,0 +1,25 @@
+{application, karlbot,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { karlbot_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    mnesia,
+    syn,
+    syntax_tools,
+    goldrush,
+    compiler,
+    lager,
+    ranch,
+    cowlib,
+    gun
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

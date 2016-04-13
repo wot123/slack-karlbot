@@ -1,0 +1,10 @@
+[{<<"cowlib">>,{pkg,<<"cowlib">>,<<"1.3.0">>},1},
+ {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.7">>},1},
+ {<<"gun">>,{pkg,<<"gun">>,<<"1.0.0-pre.1">>},0},
+ {<<"jsx">>,{pkg,<<"jsx">>,<<"2.8.0">>},0},
+ {<<"lager">>,{pkg,<<"lager">>,<<"3.0.2">>},0},
+ {<<"ranch">>,{pkg,<<"ranch">>,<<"1.1.0">>},1},
+ {<<"syn">>,
+  {git,"https://github.com/ostinelli/syn.git",
+       {ref,"9bb691885b798f23d77dbc86761ef40015c55c18"}},
+  0}].
