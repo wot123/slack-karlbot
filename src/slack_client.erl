@@ -13,27 +13,34 @@
          terminate/2,
          code_change/3]).
 
--export([send_message/2,send_term/2, get_team_data/0, find_channel/1]).
+-export([send_file/3, send_message/2,send_term/2, get_team_data/0, find_channel/1, reload/1]).
 
 -record(state, {pid, ws_pid, teamdata, token, message_id, my_user_id, my_handle}).
 
 
--define(HELPTEXT,"karlbot core commands: \n" ++
+-define(HELPTEXT,"```Karlbot core commands: \n" ++
                  "list modules\n" ++
                  "start module\n" ++
                  "stop module\n" ++
-                 "reload module\n").
+                 "restart module\n" ++
+                 "reload module\n```").
         
 
 %%%===================================================================
 %%% API functions
 %%%===================================================================
+reload(Module) ->
+    gen_server:call(?MODULE, {reload_module, Module}).
 
 find_channel(Name) ->
     gen_server:call(?MODULE, {find_channel, Name}).
 
+send_file(Channel, Content, Title) ->
+    gen_server:cast(?MODULE, {send_file, Channel, Content, Title}).
+
 send_message(Channel, Message) ->
     gen_server:cast(?MODULE, {send_message, Channel, Message}).
+
 send_term(Channel, Term) ->
     gen_server:cast(?MODULE, {send_term, Channel, Term}).
 
@@ -91,6 +98,11 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call({reload_module, Module}, _From, State) ->
+    {ok, Module, Binary} = compile:file(code:priv_dir(karlbot) ++ "/plugins/" ++ atom_to_list(Module) ++ ".erl", binary),
+    code:load_binary(Module, "nofile", Binary),
+    {reply, ok, State};
+
 handle_call({find_channel, Name}, _From, State) ->
     Id = get_channel_id(State#state.teamdata, Name),
     {reply, Id, State};
@@ -113,6 +125,10 @@ handle_call(Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({send_file, ChannelId, Content, Title}, State) ->
+    web_send_file(ChannelId, Content, Title, State),
+    {noreply, State};
+
 handle_cast({send_term, ChannelId, Term}, State) ->
     R= io_lib:format("~p",[Term]),
     ws_send_message(ChannelId, lists:flatten(R), State),
@@ -182,11 +198,21 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+web_send_file(ChannelId, Content, Title, State) ->
+    URL =  "/api/files.upload?token=" ++ State#state.token ++ 
+           "&channels=" ++ http_uri:encode(binary_to_list(ChannelId)) ++
+           "&content=" ++ http_uri:encode(Content) ++
+           "&filetype=markdown",
+    lager:info("URL: ~p",[URL]),
+    StreamRef = gun:get(State#state.pid,URL), 
+    R = gun:await_body(State#state.pid, StreamRef),
+    lager:info("R: ~p",[R]),
+    ok.
+
 make_ws_connection(false) ->
     0;
 
 make_ws_connection(Uri) ->
-    lager:info("url: ~p",[Uri]),
     {ok, {_, _, Host, _, Url,_}} = http_uri:parse(binary_to_list(Uri),
                     [{scheme_defaults, [{wss, 443}]}]),
     {ok, WsPid} = gun:open(Host, 443),
@@ -208,6 +234,7 @@ ws_send_message(ChannelId, Message, State) ->
     Json = jsx:encode([{<<"id">>, State#state.message_id},
                        {<<"type">>, <<"message">>},
                        {<<"channel">>, ChannelId},
+                       {<<"mrkdwn">>, true },
                        {<<"text">>, list_to_binary(Message)}]),
     gun:ws_send(State#state.ws_pid, {text, Json}).
 
@@ -233,6 +260,15 @@ maybe_show_help(["Karl","help"], ChannelId) ->
 
 maybe_show_help(_,_) ->
     ok.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+maybe_show_modules(["Karl","show","modules"], _ChannelId) ->
+    ok;
+maybe_show_modules(_,_) ->
+    ok.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 maybe_reload_module(["Karl","reload",Text],ChannelId) ->
     Module = list_to_atom(Text),
@@ -243,12 +279,16 @@ maybe_reload_module(["Karl","reload",Text],ChannelId) ->
 maybe_reload_module(_,_) ->
     ok.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 maybe_list_modules(["Karl","list","modules"], ChannelId) ->
     T = supervisor:which_children(module_sup),
     slack_client:send_term(ChannelId, T),
     ok;
 maybe_list_modules(_,_) ->
     ok.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 maybe_start_module(["Karl","start",Module], ChannelId) ->
     T = module_sup:start_module(Module,ChannelId),
@@ -263,9 +303,26 @@ maybe_stop_module(["Karl","stop",Module], ChannelId) ->
     ok;
 maybe_stop_module(_,_) ->
     ok.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+maybe_restart_module(["Karl", "restart", Text], ChannelId) ->
+    T = module_sup:stop_module(Text),
+    Module = list_to_atom(Text),
+    {ok, Module, Binary} = compile:file(code:priv_dir(karlbot) ++ "/plugins/" ++ Text ++ ".erl", binary),
+    code:load_binary(Module, "nofile", Binary),
+    T = module_sup:start_module(Text, ChannelId),
+    slack_client:send_term(ChannelId, T);
+
+maybe_restart_module(_,_) ->
+    ok.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 process_command(Text,ChannelId) ->
+    maybe_show_modules(Text, ChannelId),
     maybe_show_help(Text, ChannelId),
+    maybe_restart_module(Text, ChannelId),
     maybe_reload_module(Text, ChannelId),
     maybe_list_modules(Text, ChannelId),
     maybe_start_module(Text, ChannelId),

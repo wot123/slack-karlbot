@@ -13,6 +13,6 @@ erl_crash.dump
 .rebar
 logs
 _build
-priv/slack.config
+priv/*.config
 Mnesia.nonode@nohost
 priv/plugins/planixs
