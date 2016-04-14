@@ -15,4 +15,3 @@ logs
 _build
 priv/*.config
 Mnesia.nonode@nohost
-priv/plugins/
