@@ -31,7 +31,8 @@ start_link() ->
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
     ChildSpecs = [
-        ?CHILD(slack_client, worker)
+        ?CHILD(slack_client, worker),
+        ?CHILD(plugin_manager, worker)
     ],       
     {ok, { {one_for_one, 5, 10}, ChildSpecs} }.
 
