@@ -17,10 +17,7 @@ Add your bot's oauth token to priv/slack.config (see example file)
 In Slack
 -----
 
-@{botname} load linusbot
-ok
-@{botname} start linusbot
-linusbot: started
-
-.... don't say "pull-request"
-
+@botname: load linusbot  
+ok  
+@botname: start linusbot  
+linusbot: started  
