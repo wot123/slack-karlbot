@@ -28,8 +28,8 @@
 get_self() ->
     gen_fsm:sync_send_all_state_event(?MODULE, {get_self}).
 
-find_channel(_Channel) ->
-    ok.
+find_channel(ChannelName) ->
+    gen_fsm:sync_send_event(?MODULE,{find_channel, ChannelName}).
 
 get_team_data() ->
     ok.
@@ -138,6 +138,11 @@ connecting(_Event, _From, State) ->
     Reply = ok,
     {reply, Reply, connecting, State}.
 
+connected({find_channel, ChannelName}, _From, State) ->
+    Channels = proplists:get_value(<<"channels">>, State#state.teamdata),
+    Reply = get_channel_id(ChannelName, Channels),
+    {reply, Reply, connected, State};
+
 connected(_Event, _From, State) ->
     Reply = ok,
     {reply, Reply, connected, State}.
@@ -241,6 +246,21 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+get_channel_id(_,[]) ->
+    false;
+get_channel_id(Name, [H|T]) ->
+    CName = proplists:get_value(<<"name">>,H),
+    case list_to_binary(Name) == CName of
+        true ->
+            proplists:get_value(<<"id">>,H);
+        _ ->
+            get_channel_id(Name, T)
+    end.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 ws_send_message(ChannelId, Message, State) ->
     Json = jsx:encode([{<<"id">>, State#state.message_id},
