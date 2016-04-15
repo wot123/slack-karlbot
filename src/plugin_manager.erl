@@ -93,12 +93,10 @@ handle_info([{<<"type">>,<<"message">>},
              {<<"channel">>,ChannelId},
              {<<"user">>, _UserId},
              {<<"text">>, Text},_,_], State) ->
-    lager:info("text: ~p",[Text]),
     process_command(string:tokens(binary_to_list(Text)," "),ChannelId,State),
     {noreply, State};
 
-handle_info(Info, State) ->
-    lager:info("info: ~p", [Info]),
+handle_info(_Info, State) ->
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -164,38 +162,32 @@ maybe_load_plugin([Me,"load", Plugin], ChannelId, Me) ->
     case compile:file(code:priv_dir(karlbot) ++ "/plugins/"++ Plugin ++ "/" ++ Plugin ++ ".erl", binary) of
         {ok, Module, Binary} ->
             slack_client:send_term(ChannelId, code:load_binary(Module, "nofile", Binary));
-        {error, E, W} ->
-            slack_client:send_message(ChannelId,E ++ "\n" ++ W)
-    end,
-    lager:info("load plugin");
+        Error ->
+            slack_client:send_message(ChannelId,Error)
+    end;
 maybe_load_plugin(_,_,_) ->
     false.
 
 maybe_start_plugin([Me,"start", Plugin], ChannelId, Me) ->
-    module_sup:start_module(Plugin, ChannelId),
-    lager:info("start plugin");
+    module_sup:start_module(Plugin, ChannelId);
 maybe_start_plugin(_,_,_) ->
     false.
 
 maybe_stop_plugin([Me,"stop", Plugin], ChannelId, Me) ->
-    module_sup:stop_module(Plugin, ChannelId),
-    lager:info("stop plugin");
+    module_sup:stop_module(Plugin, ChannelId);
 maybe_stop_plugin(_,_,_) ->
     false.
 
 maybe_restart_plugin([Me,"restart", Plugin], ChannelId, Me) ->
     module_sup:stop_module(Plugin, ChannelId),
     maybe_load_plugin([Me,"load",Plugin], ChannelId, Me),
-    module_sup:start_module(Plugin, ChannelId),
-    lager:info("restart plugin");
+    module_sup:start_module(Plugin, ChannelId);
 maybe_restart_plugin(_,_,_) ->
     false.
 
 get_handle(Self) ->
     Id = proplists:get_value(<<"id">>, Self),
-    Handle = "\<\@" ++ binary_to_list(Id) ++ "\>:",
-    lager:info("handle: ~p",[Handle]),
-    Handle.
+    "\<\@" ++ binary_to_list(Id) ++ "\>:".
 
 process_command(Tokens, ChannelId, State) ->
     maybe_list_plugins(Tokens, ChannelId, get_handle(State#state.self)),
