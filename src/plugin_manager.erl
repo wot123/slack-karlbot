@@ -163,7 +163,7 @@ maybe_load_plugin([Me,"load", Plugin], ChannelId, Me) ->
         {ok, Module, Binary} ->
             slack_client:send_term(ChannelId, code:load_binary(Module, "nofile", Binary));
         Error ->
-            slack_client:send_message(ChannelId,Error)
+            slack_client:send_term(ChannelId,Error)
     end;
 maybe_load_plugin(_,_,_) ->
     false.
@@ -174,12 +174,12 @@ maybe_start_plugin(_,_,_) ->
     false.
 
 maybe_stop_plugin([Me,"stop", Plugin], ChannelId, Me) ->
-    module_sup:stop_module(Plugin, ChannelId);
+    slack_client:send_term(ChannelId, module_sup:stop_module(Plugin));
 maybe_stop_plugin(_,_,_) ->
     false.
 
 maybe_restart_plugin([Me,"restart", Plugin], ChannelId, Me) ->
-    module_sup:stop_module(Plugin, ChannelId),
+    module_sup:stop_module(Plugin),
     maybe_load_plugin([Me,"load",Plugin], ChannelId, Me),
     module_sup:start_module(Plugin, ChannelId);
 maybe_restart_plugin(_,_,_) ->
