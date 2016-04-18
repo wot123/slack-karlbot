@@ -13,7 +13,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {self}).
+-record(state, {self, plugin_dirs}).
 
 %%%===================================================================
 %%% API functions
@@ -45,8 +45,11 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    {ok,Config} = file:consult(code:priv_dir(karlbot) ++ "/plugins.config"),
+    Dirs = proplists:get_value(dirs, Config),
+
     syn:join(slack_messages, self()),
-    {ok, #state{self = slack_client:get_self()}}.
+    {ok, #state{self = slack_client:get_self(), plugin_dirs = Dirs}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -146,26 +149,47 @@ find_plugins([H|T], L) ->
             find_plugins(T,L)
     end.
 
+list_all_plugins(P) ->
+    list_all_plugins(P,[]).
+
+list_all_plugins([], P) ->
+    P;
+list_all_plugins([H|T], P) ->
+    {ok, Dirs} = file:list_dir(code:priv_dir(karlbot) ++ "/" ++ H),
+    list_all_plugins(T, P ++ find_plugins(Dirs)).
+
+
+get_directory([], _) ->
+    false;
+get_directory([H|T], PluginName) ->
+    {ok, Dirs} = file:list_dir(code:priv_dir(karlbot) ++ "/" ++ H),
+    case lists:member(PluginName, Dirs) of
+        true ->
+            "/" ++ H ++ "/";
+        false ->
+            get_directory(T, PluginName)
+    end.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-maybe_list_plugins([Me,"list","plugins"], ChannelId, Me) ->
+maybe_list_plugins([Me,"list","plugins"], ChannelId, Me, State) ->
     lager:info("list plugins"),
-    {ok, Dirs} = file:list_dir(code:priv_dir(karlbot) ++ "/plugins"),
-    Plugins = find_plugins(Dirs),
+    Plugins = list_all_plugins(State#state.plugin_dirs),
     slack_client:send_term(ChannelId, Plugins);
 
-maybe_list_plugins(_,_,_) ->
+maybe_list_plugins(_, _, _, _) ->
     false.
 
-maybe_load_plugin([Me,"load", Plugin], ChannelId, Me) ->
+maybe_load_plugin([Me,"load", Plugin], ChannelId, Me, State) ->
     Module = list_to_atom(Plugin),
-    case compile:file(code:priv_dir(karlbot) ++ "/plugins/"++ Plugin ++ "/" ++ Plugin ++ ".erl", binary) of
+    D = get_directory(State#state.plugin_dirs, Plugin),
+    case compile:file(code:priv_dir(karlbot) ++ D ++ Plugin ++ "/" ++ Plugin ++ ".erl", binary) of
         {ok, Module, Binary} ->
             slack_client:send_term(ChannelId, code:load_binary(Module, "nofile", Binary));
         Error ->
             slack_client:send_term(ChannelId,Error)
     end;
-maybe_load_plugin(_,_,_) ->
+maybe_load_plugin(_, _, _, _) ->
     false.
 
 maybe_start_plugin([Me,"start", Plugin], ChannelId, Me) ->
@@ -178,11 +202,11 @@ maybe_stop_plugin([Me,"stop", Plugin], ChannelId, Me) ->
 maybe_stop_plugin(_,_,_) ->
     false.
 
-maybe_restart_plugin([Me,"restart", Plugin], ChannelId, Me) ->
+maybe_restart_plugin([Me,"restart", Plugin], ChannelId, Me, State) ->
     module_sup:stop_module(Plugin),
-    maybe_load_plugin([Me,"load",Plugin], ChannelId, Me),
+    maybe_load_plugin([Me,"load",Plugin], ChannelId, Me, State),
     module_sup:start_module(Plugin, ChannelId);
-maybe_restart_plugin(_,_,_) ->
+maybe_restart_plugin(_, _, _, _) ->
     false.
 
 get_handle(Self) ->
@@ -190,9 +214,9 @@ get_handle(Self) ->
     "\<\@" ++ binary_to_list(Id) ++ "\>:".
 
 process_command(Tokens, ChannelId, State) ->
-    maybe_list_plugins(Tokens, ChannelId, get_handle(State#state.self)),
-    maybe_load_plugin(Tokens, ChannelId, get_handle(State#state.self)),
+    maybe_list_plugins(Tokens, ChannelId, get_handle(State#state.self), State),
+    maybe_load_plugin(Tokens, ChannelId, get_handle(State#state.self), State),
     maybe_start_plugin(Tokens, ChannelId, get_handle(State#state.self)),
     maybe_stop_plugin(Tokens, ChannelId, get_handle(State#state.self)),
-    maybe_restart_plugin(Tokens, ChannelId, get_handle(State#state.self)).
+    maybe_restart_plugin(Tokens, ChannelId, get_handle(State#state.self), State).
 

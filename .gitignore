@@ -14,4 +14,5 @@ erl_crash.dump
 logs
 _build
 priv/*.config
+priv/private
 Mnesia.nonode@nohost
