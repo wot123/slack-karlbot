@@ -17,7 +17,7 @@
          terminate/3,
          code_change/4]).
 
--export([get_self/0, send_file/3, send_message/2, send_term/2, get_team_data/0, find_channel/1]).
+-export([get_self/0, send_text_file/3, send_message/2, send_term/2, get_team_data/0, find_channel/1]).
 
 -record(state, {pid, ws_pid, teamdata, token, message_id, self}).
 
@@ -28,6 +28,7 @@
 get_self() ->
     gen_fsm:sync_send_all_state_event(?MODULE, {get_self}).
 
+-spec find_channel(string()) -> binary().
 find_channel(ChannelName) ->
     gen_fsm:sync_send_event(?MODULE,{find_channel, ChannelName}).
 
@@ -40,8 +41,9 @@ send_message(ChannelId, Message) ->
 send_term(ChannelId, Term) ->
     gen_fsm:send_event(?MODULE,{send_term, ChannelId, Term}).
 
-send_file(_ChannelId, _File, _Title) ->
-    ok.
+-spec send_text_file(string(), string(), string()) -> term().
+send_text_file(ChannelId, File, Title) ->
+    gen_fsm:send_event(?MODULE,{send_text_file, ChannelId, Title, File}).
 
 
 
@@ -112,6 +114,10 @@ connected({send_term, ChannelId, Term}, State) ->
 
 connected({send_message, ChannelId, Message}, State) ->
     ws_send_message(ChannelId, Message, State),
+    {next_state, connected, State};
+
+connected({send_text_file, ChannelName, Title, File}, State) ->
+    http_send_text_file(ChannelName, Title, File, State),
     {next_state, connected, State};
 
 connected(_Event, State) ->
@@ -260,6 +266,17 @@ get_channel_id(Name, [H|T]) ->
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+http_send_text_file(ChannelName, _Title, File, State) ->
+    Boundary = "---------------9999999",
+    Form = http_stuff:format_multipart_formdata(Boundary, [], [{file,"file",File}]),
+    StreamRef = gun:post(State#state.pid, "/api/files.upload?token=" ++ 
+                         State#state.token ++ "&channels=" ++ ChannelName,
+                         [{<<"content-length">>, length(File)},
+                          {<<"content-type">>, "multipart/form-data; boundary=" 
+                           ++ Boundary}], Form),
+    gun:await_body(State#state.pid, StreamRef).
+
 
 
 ws_send_message(ChannelId, Message, State) ->
