@@ -35,6 +35,8 @@ find_channel(ChannelName) ->
 get_team_data() ->
     ok.
 
+send_message(false, _ ) ->
+    ok;
 send_message(ChannelId, Message) ->
     gen_fsm:send_event(?MODULE,{send_message, ChannelId, Message}).
 
