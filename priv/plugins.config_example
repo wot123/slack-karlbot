@@ -1,1 +1,2 @@
-{dirs, ["plugins"]}.
+[{dirs, ["plugins"]},
+ {auto_start, []}].
