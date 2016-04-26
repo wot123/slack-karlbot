@@ -83,7 +83,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({auto_start, StartList}, State) ->
     lager:info("autostart: ~p",[StartList]),
-    load_plugins(StartList, State),
+    lists:map(fun(P) -> compile_and_load(P) end, StartList),
     start_plugins(StartList),
     {noreply, State};
 
@@ -139,44 +139,25 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-
-find_plugins(D) ->
-    find_plugins(D,[]).
-
-find_plugins([], L) ->
-    L;
-find_plugins([".git"|T], L) ->
-    find_plugins(T,L);
-
-find_plugins([H|T], L) ->
-    case file:list_dir(code:priv_dir(karlbot) ++ "/plugins/" ++ H) of
-        {ok, _} ->
-            
-            find_plugins(T,L ++ [H]);
-        _ ->
-            find_plugins(T,L)
-    end.
-
-list_all_plugins(P) ->
-    list_all_plugins(P,[]).
-
-list_all_plugins([], P) ->
-    P;
-list_all_plugins([H|T], P) ->
-    {ok, Dirs} = file:list_dir(code:priv_dir(karlbot) ++ "/" ++ H),
-    list_all_plugins(T, P ++ find_plugins(Dirs)).
+list_plugins() ->
+    Dirs = lists:filter(fun(D) -> filelib:is_dir(D) end, 
+                    filelib:wildcard(code:priv_dir(karlbot) ++ "/*/*/")),
+    Filtered = lists:filter(fun(D) -> filename:basename(D) /= ".git" end, Dirs),
+    lists:map(fun(D) -> filename:basename(D) end, Filtered).
 
 
-get_directory([], _) ->
+load_binary(error) ->
     false;
-get_directory([H|T], PluginName) ->
-    {ok, Dirs} = file:list_dir(code:priv_dir(karlbot) ++ "/" ++ H),
-    case lists:member(PluginName, Dirs) of
-        true ->
-            "/" ++ H ++ "/";
-        false ->
-            get_directory(T, PluginName)
-    end.
+load_binary({ok, Module, Binary}) ->
+    code:load_binary(Module, "nofile", Binary).
+
+compile_and_load(Plugin) ->
+    Directory = filelib:wildcard(code:priv_dir(karlbot) ++ "/*/" ++ Plugin ++ "/"),
+    lager:info("directory: ~p",[Directory]),
+    [Bins] = lists:map(fun(D) -> filelib:fold_files(D,"[a-zA-Z0-9_].erl", true, 
+                    fun(F,AccIn) -> [compile:file(F, binary)|AccIn] end, []) end, Directory),
+    lists:map(fun(D) -> load_binary(D) end, Bins).
+    
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -186,35 +167,17 @@ start_plugins([H|T]) ->
     module_sup:start_module(H, false),
     start_plugins(T).
 
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-load_plugins([], _State) ->
-    ok;
-load_plugins([H|T], State) ->
-    load_plugin(H, State),
-    load_plugins(T, State).
-
-load_plugin(Plugin, State) ->
-    Module = list_to_atom(Plugin),
-    D = get_directory(State#state.plugin_dirs, Plugin),
-    case compile:file(code:priv_dir(karlbot) ++ D ++ Plugin ++ "/" ++ Plugin ++ ".erl", binary) of
-        {ok, Module, Binary} ->
-            code:load_binary(Module, "nofile", Binary);
-        Error ->
-            Error
-    end.
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-maybe_list_plugins([Me,"list","plugins"], ChannelId, Me, State) ->
+maybe_list_plugins([Me,"list","plugins"], ChannelId, Me, _State) ->
     lager:info("list plugins"),
-    Plugins = list_all_plugins(State#state.plugin_dirs),
+    Plugins = list_plugins(),
     slack_client:send_term(ChannelId, Plugins);
 
 maybe_list_plugins(_, _, _, _) ->
     false.
 
-maybe_load_plugin([Me,"load", Plugin], ChannelId, Me, State) ->
-    slack_client:send_term(ChannelId, load_plugin(Plugin, State));
+maybe_load_plugin([Me,"load", Plugin], ChannelId, Me, _State) ->
+    slack_client:send_term(ChannelId, compile_and_load(Plugin));
 
 maybe_load_plugin(_, _, _, _) ->
     false.
@@ -236,8 +199,7 @@ maybe_restart_plugin([Me,"restart", Plugin], ChannelId, Me, State) ->
 maybe_restart_plugin(_, _, _, _) ->
     false.
 
-get_handle(Self) ->
-    Id = proplists:get_value(<<"id">>, Self),
+get_handle(#{<<"id">> := Id}) ->
     "\<\@" ++ binary_to_list(Id) ++ "\>:".
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

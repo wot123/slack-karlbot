@@ -18,12 +18,27 @@
          code_change/4]).
 
 -export([get_self/0, send_text_file/3, send_message/2, send_term/2, get_team_data/0, find_channel/1]).
+-export([send_block_message/2]).
+-export([get_handle/1]).
 
 -record(state, {pid, ws_pid, teamdata, token, message_id, self}).
 
 %%%===================================================================
 %%% API functions
 %%%===================================================================
+
+get_handle(#{<<"self">> := #{<<"id">> := Id}}) ->
+    "\<\@" ++ binary_to_list(Id) ++ "\>\:".
+
+
+block_text(T) ->
+    "```" ++ T ++ "```".
+
+send_block_message(false, _) ->
+    ok;
+send_block_message(ChannelId, Message) ->
+    gen_fsm:send_event(?MODULE,{send_message, ChannelId, block_text(Message)}).
+
 
 get_self() ->
     gen_fsm:sync_send_all_state_event(?MODULE, {get_self}).
@@ -83,13 +98,13 @@ init([]) ->
     {ok, Pid} = gun:open("slack.com", 443),
     StreamRef = gun:get(Pid, "/api/rtm.start?token=" ++ Token),
     {ok, Body} = gun:await_body(Pid, StreamRef, 10000),
-    TeamData = jsx:decode(Body),
-    WsPid = make_ws_connection(proplists:get_value(<<"url">>, TeamData, false)),
+    TeamDataMap = jsx:decode(Body, [return_maps]),
 
-    Self = proplists:get_value(<<"self">>,TeamData),
+    #{<<"url">> := WsUrl } = TeamDataMap,
+    WsPid = make_ws_connection(WsUrl),
 
-    {ok, connecting, #state{pid=Pid, ws_pid=WsPid, teamdata=TeamData, 
-                           token=Token, message_id=0, self=Self}}.
+    {ok, connecting, #state{pid=Pid, ws_pid=WsPid, teamdata=TeamDataMap, 
+                           token=Token, message_id=0}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -188,7 +203,8 @@ handle_event(_Event, StateName, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_sync_event({get_self}, _From, StateName, State) ->
-    {reply, State#state.self, StateName, State};
+    #{<<"self">> := Self} = State#state.teamdata,
+    {reply, Self, StateName, State};
 
 handle_sync_event(_Event, _From, StateName, State) ->
     Reply = ok,
@@ -255,17 +271,13 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-get_channel_id(_,[]) ->
-    false;
-get_channel_id(Name, [H|T]) ->
-    CName = proplists:get_value(<<"name">>,H),
-    case list_to_binary(Name) == CName of
-        true ->
-            proplists:get_value(<<"id">>,H);
-        _ ->
-            get_channel_id(Name, T)
-    end.
+get_channel_id(Name, #{<<"channels">> := Channels}) ->
+    [C|_] = lists:filter(fun(Map) -> Map == #{<<"name">> => Name} end, Channels),
+    #{<<"id">> := Id} = C,
+    Id;
 
+get_channel_id(_, _) ->
+    false.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
