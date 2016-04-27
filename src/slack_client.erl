@@ -17,8 +17,12 @@
          terminate/3,
          code_change/4]).
 
--export([get_self/0, send_text_file/3, send_message/2, send_term/2, get_team_data/0, find_channel/1]).
--export([send_block_message/2]).
+-export([get_self/0, 
+         send_text_file/3, 
+         send_message/2,
+         send_term/2, 
+         get_team_data/0]).
+-export([send_block_message/2, chat_postmessage/3]).
 -export([get_handle/1]).
 
 -record(state, {pid, ws_pid, teamdata, token, message_id, self}).
@@ -43,17 +47,18 @@ send_block_message(ChannelId, Message) ->
 get_self() ->
     gen_fsm:sync_send_all_state_event(?MODULE, {get_self}).
 
--spec find_channel(string()) -> binary().
-find_channel(ChannelName) ->
-    gen_fsm:sync_send_event(?MODULE,{find_channel, ChannelName}).
-
 get_team_data() ->
-    ok.
+    gen_fsm:sync_send_all_state_event(?MODULE, {get_teamdata}).
 
 send_message(false, _ ) ->
     ok;
 send_message(ChannelId, Message) ->
     gen_fsm:send_event(?MODULE,{send_message, ChannelId, Message}).
+
+chat_postmessage(false, _, _) ->
+    ok;
+chat_postmessage(ChannelId, Message, Attachment) ->
+    gen_fsm:send_event(?MODULE,{chat_postmessage, ChannelId, Message, Attachment}).
 
 send_term(ChannelId, Term) ->
     gen_fsm:send_event(?MODULE,{send_term, ChannelId, Term}).
@@ -133,6 +138,12 @@ connected({send_message, ChannelId, Message}, State) ->
     ws_send_message(ChannelId, Message, State),
     {next_state, connected, State};
 
+connected({chat_postmessage, ChannelId, Message, Attachment}, State) ->
+    %ChannelName = get_channel_name(ChannelId, State#state.teamdata),
+    Json = jsx:encode(Attachment),
+    http_post_chat(binary_to_list(ChannelId), Message, binary_to_list(Json), State),
+    {next_state, connected, State};
+
 connected({send_text_file, ChannelName, Title, File}, State) ->
     http_send_text_file(ChannelName, Title, File, State),
     {next_state, connected, State};
@@ -160,11 +171,6 @@ connected(_Event, State) ->
 connecting(_Event, _From, State) ->
     Reply = ok,
     {reply, Reply, connecting, State}.
-
-connected({find_channel, ChannelName}, _From, State) ->
-    Channels = proplists:get_value(<<"channels">>, State#state.teamdata),
-    Reply = get_channel_id(ChannelName, Channels),
-    {reply, Reply, connected, State};
 
 connected(_Event, _From, State) ->
     Reply = ok,
@@ -205,6 +211,10 @@ handle_event(_Event, StateName, State) ->
 handle_sync_event({get_self}, _From, StateName, State) ->
     #{<<"self">> := Self} = State#state.teamdata,
     {reply, Self, StateName, State};
+
+handle_sync_event({get_teamdata}, _From, StateName, State) ->
+    {reply, State#state.teamdata, StateName, State};
+
 
 handle_sync_event(_Event, _From, StateName, State) ->
     Reply = ok,
@@ -271,15 +281,15 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-get_channel_id(Name, #{<<"channels">> := Channels}) ->
-    [C|_] = lists:filter(fun(Map) -> Map == #{<<"name">> => Name} end, Channels),
-    #{<<"id">> := Id} = C,
-    Id;
 
-get_channel_id(_, _) ->
-    false.
+http_post_chat(ChannelName, Message, Attachment, State) ->
+    Url = ["/api/chat.postMessage","?token=",State#state.token,
+           "&channel=",ChannelName,"&text=",Message,
+           "&attachments=", http_uri:encode(Attachment)],
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    lager:info("url: ~p",[Url]),
+    StreamRef = gun:get(State#state.pid, lists:flatten(Url)),
+    gun:await_body(State#state.pid, StreamRef). 
 
 http_send_text_file(ChannelName, _Title, File, State) ->
     Boundary = "---------------9999999",
@@ -290,8 +300,6 @@ http_send_text_file(ChannelName, _Title, File, State) ->
                           {<<"content-type">>, "multipart/form-data; boundary=" 
                            ++ Boundary}], Form),
     gun:await_body(State#state.pid, StreamRef).
-
-
 
 ws_send_message(ChannelId, Message, State) ->
     Json = jsx:encode([{<<"id">>, State#state.message_id},
