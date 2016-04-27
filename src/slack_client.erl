@@ -284,7 +284,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 http_post_chat(ChannelName, Message, Attachment, State) ->
     Url = ["/api/chat.postMessage","?token=",State#state.token,
-           "&channel=",ChannelName,"&text=",Message,
+           "&channel=",ChannelName,"&as_user=true&text=",Message,
            "&attachments=", http_uri:encode(Attachment)],
 
     lager:info("url: ~p",[Url]),
