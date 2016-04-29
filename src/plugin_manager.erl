@@ -151,6 +151,8 @@ load_binary(error) ->
 load_binary({ok, Module, Binary}) ->
     code:load_binary(Module, "nofile", Binary).
 
+compile_and_load([]) ->
+    false;
 compile_and_load(Plugin) ->
     Directory = filelib:wildcard(code:priv_dir(karlbot) ++ "/*/" ++ Plugin ++ "/"),
     lager:info("directory: ~p",[Directory]),
