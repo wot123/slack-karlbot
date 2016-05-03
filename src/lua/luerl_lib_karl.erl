@@ -1,11 +1,8 @@
 -module(luerl_lib_karl).
 
 -compile([{parse_transform, lager_transform}]).
-%-include("luerl.hrl").
-
 
 -export([install/1]).
-%-import(luerl_lib, [lua_error/2, badarg_error/3]).
 
 install(St) ->
     luerl_emul:alloc_table(table(), St).

@@ -16,7 +16,8 @@
     lager,
     ranch,
     cowlib,
-    gun
+    gun,
+    luerl
    ]},
   {env,[]},
   {modules, []},
