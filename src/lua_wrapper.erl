@@ -98,9 +98,10 @@ handle_info([{<<"type">>,<<"message">>},
              {<<"user">>,_User},
              {<<"text">>,Text},_,_], State) ->
 
-    {Res, State2} = luerl:call_function([message], [Channel, Text], State#state.lua_state),
+
+    {Res, LuaState} = luerl:call_function([message], [Channel, Text], State#state.lua_state),
     lager:info("lua res: ~p",[Res]),
-    {noreply, State2};
+    {noreply, State#state{lua_state = LuaState}};
 
 handle_info(Info, State) ->
     lager:info("lua wrapping info: ~p",[Info]),
@@ -134,6 +135,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-gun_get(St) ->
-    lager:info("gun get: ~p",[St]).
