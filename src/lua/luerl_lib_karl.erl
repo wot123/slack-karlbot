@@ -13,7 +13,8 @@ table() ->
      {<<"send_message">>,{function, fun send_message/2}},
      {<<"http_get">>,{function, fun http_get/2}},
      {<<"db_store">>,{function, fun db_store/2}},
-     {<<"db_get">>,{function, fun db_get/2}}].
+     {<<"db_get">>,{function, fun db_get/2}},
+     {<<"register_message_handler">>,{function, fun register_handler/2}}].
 
 gun_test(Args, State) ->
     lager:info("gun_test called: ~p",[Args]),
@@ -36,4 +37,9 @@ db_store(Args, State) ->
 db_get(Args, State) ->
     lager:info("lua db_get: ~p", [Args]),
     {[ok], State}.
+
+register_handler([Fun], State) ->
+    lager:info("register handler ~p",[Fun]),
+    {[ok], State}.
+
 

@@ -16,6 +16,7 @@
     lager,
     ranch,
     cowlib,
+    cowboy,
     gun,
     luerl
    ]},
