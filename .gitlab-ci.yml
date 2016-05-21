@@ -1,0 +1,15 @@
+image: "erlang"
+
+before_script:
+    - rebar3 compile
+
+stages:
+    - test
+
+job: 
+    stage: test
+    script: 
+        - rebar3 eunit
+    cache:
+        paths:
+            - "_build"
