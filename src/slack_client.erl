@@ -11,6 +11,7 @@
          connecting/3,
          connected/2,
          connected/3,
+
          handle_event/3,
          handle_sync_event/4,
          handle_info/3,
@@ -19,11 +20,18 @@
 
 -export([get_self/0, 
          send_text_file/3, 
-         send_message/2,
+         send_message/1, send_message/2,
          send_term/2, 
-         get_team_data/0]).
+         get_team_data/0,
+         reconnect/0]).
+
 -export([send_block_message/2, chat_postmessage/3]).
 -export([get_handle/1]).
+
+-ifdef(TEST).
+-export([block_text/1]).
+-endif.
+
 
 -record(state, {pid, ws_pid, teamdata, token, message_id, self}).
 
@@ -32,11 +40,18 @@
 %%%===================================================================
 
 get_handle(#{<<"self">> := #{<<"id">> := Id}}) ->
-    "\<\@" ++ binary_to_list(Id) ++ "\>\:".
+    "\<\@" ++ binary_to_list(Id) ++ "\>\:";
+get_handle(#{<<"id">> := Id}) ->
+    "\<\@" ++ binary_to_list(Id) ++ "\>\:";
+get_handle(_) ->
+    false.
 
 
-block_text(T) ->
-    "```" ++ T ++ "```".
+block_text(T) when is_list(T)->
+    "```" ++ T ++ "```";
+block_text(_) ->
+    false.
+
 
 send_block_message(false, _) ->
     ok;
@@ -49,6 +64,10 @@ get_self() ->
 
 get_team_data() ->
     gen_fsm:sync_send_all_state_event(?MODULE, {get_teamdata}).
+
+
+send_message(Message) ->
+    gen_fsm:send_event(?MODULE,{send_message, Message}).
 
 send_message(false, _ ) ->
     ok;
@@ -67,6 +86,8 @@ send_term(ChannelId, Term) ->
 send_text_file(ChannelId, File, Title) ->
     gen_fsm:send_event(?MODULE,{send_text_file, ChannelId, Title, File}).
 
+reconnect() ->
+    gen_fsm:send_event(?MODULE,{reconnect}).
 
 
 %%--------------------------------------------------------------------
@@ -100,12 +121,8 @@ start_link() ->
 %%--------------------------------------------------------------------
 init([]) ->
     {ok, [{token, Token}]} = file:consult(code:priv_dir(karlbot) ++ "/slack.config"),
-    {ok, Pid} = gun:open("slack.com", 443),
-    StreamRef = gun:get(Pid, "/api/rtm.start?token=" ++ Token),
-    {ok, Body} = gun:await_body(Pid, StreamRef, 10000),
-    TeamDataMap = jsx:decode(Body, [return_maps]),
 
-    #{<<"url">> := WsUrl } = TeamDataMap,
+    {Pid, TeamDataMap, WsUrl} = get_teamdata(Token),
     WsPid = make_ws_connection(WsUrl),
 
     {ok, connecting, #state{pid=Pid, ws_pid=WsPid, teamdata=TeamDataMap, 
@@ -126,12 +143,18 @@ init([]) ->
 %%                   {stop, Reason, NewState}
 %% @end
 %%--------------------------------------------------------------------
+
+
 connecting(_Event, State) ->
     {next_state, connecting, State}.
 
 connected({send_term, ChannelId, Term}, State) ->
     R= io_lib:format("~p",[Term]),
     ws_send_message(ChannelId, lists:flatten(R), State),
+    {next_state, connected, State};
+
+connected({send_message, Message}, State) ->
+    ws_send_message(Message, State),
     {next_state, connected, State};
 
 connected({send_message, ChannelId, Message}, State) ->
@@ -148,8 +171,16 @@ connected({send_text_file, ChannelName, Title, File}, State) ->
     http_send_text_file(ChannelName, Title, File, State),
     {next_state, connected, State};
 
+connected({reconnect}, _State=#state{token=Token, ws_pid=OldWsPid}) ->
+    gun:close(OldWsPid),
+    {Pid, TeamDataMap, WsUrl} = get_teamdata(Token),
+    WsPid = make_ws_connection(WsUrl),
+    {next_state, connecting, #state{pid=Pid, ws_pid=WsPid, teamdata=TeamDataMap, 
+                           token=Token, message_id=0}};
+
 connected(_Event, State) ->
     {next_state, connected, State}.
+
 %%-------------------------------------------------------------------
 %% @private
 %% @doc
@@ -248,6 +279,10 @@ handle_info({gun_ws, _Pid, {text, Text}}, connected, State) ->
     syn:publish(slack_messages, Json),
     {next_state, connected, State};
 
+handle_info({gun_down, _ConPid, ws, Reason, _KilledStream, _UPStreams}, connected, State) ->
+    lager:info("websocket closed: ~p",[Reason]),
+    {next_state, connected, State};
+
 handle_info(_Info, StateName, State) ->
     {next_state, StateName, State}.
 
@@ -300,6 +335,10 @@ http_send_text_file(ChannelName, _Title, File, State) ->
                            ++ Boundary}], Form),
     gun:await_body(State#state.pid, StreamRef).
 
+ws_send_message(Message, State) ->
+    Json = jsx:encode(Message),
+    gun:ws_send(State#state.ws_pid, {text, Json}).
+
 ws_send_message(ChannelId, Message, State) ->
     Json = jsx:encode([{<<"id">>, State#state.message_id},
                        {<<"type">>, <<"message">>},
@@ -317,3 +356,11 @@ make_ws_connection(Uri) ->
     {ok, WsPid} = gun:open(Host, 443),
     gun:ws_upgrade(WsPid, Url),
     WsPid.
+
+get_teamdata(Token) ->
+    {ok, Pid} = gun:open("slack.com", 443),
+    StreamRef = gun:get(Pid, "/api/rtm.start?token=" ++ Token),
+    {ok, Body} = gun:await_body(Pid, StreamRef, 10000),
+    TeamDataMap = jsx:decode(Body, [return_maps]),
+    #{<<"url">> := WsUrl } = TeamDataMap,
+    {Pid, TeamDataMap, WsUrl}.
