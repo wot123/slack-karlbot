@@ -108,14 +108,14 @@ handle_info({send_ping}, State=#state{current_ping=0}) ->
 % still waiting for a pong so timeout
 handle_info({send_ping}, State) ->
     lager:info("ping timeout!"),
-    {noreply, State};
+    slack_client:reconnect(),
+    {noreply, State#state{current_ping=0}};
 
 
 handle_info([{<<"type">>,<<"pong">>},
              {<<"time">>,_Time},
              {<<"reply_to">>, ReplyId}], State) ->
     lager:info("got a pong from id ~p",[ReplyId]),
-    slack_client:reconnect(),
     {noreply, State#state{current_ping=0}};
 
 handle_info(_Info, State) ->
