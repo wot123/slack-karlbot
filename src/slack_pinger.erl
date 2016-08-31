@@ -18,7 +18,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {timer_ref, next_id=1, current_ping=0}).
+-record(state, {timer_ref, next_id=1, waiting_pong=false}).
 
 %%%===================================================================
 %%% API functions
@@ -98,25 +98,26 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 
 % if current_ping is 0 we're not currently waiting for a pong
-handle_info({send_ping}, State=#state{current_ping=0}) ->
+handle_info({send_ping}, State=#state{waiting_pong=false}) ->
     lager:info("sending ping"),
     slack_client:send_message([{<<"id">>, State#state.next_id},
                                {<<"type">>, <<"ping">>},
                                {<<"time">>, get_timestamp()}]), 
-    {noreply, State#state{next_id = State#state.next_id + 1}};
+    {noreply, State#state{next_id = State#state.next_id + 1,
+                         waiting_pong=true}};
 
 % still waiting for a pong so timeout
 handle_info({send_ping}, State) ->
     lager:info("ping timeout!"),
     slack_client:reconnect(),
-    {noreply, State#state{current_ping=0}};
+    {noreply, State#state{waiting_pong=false}};
 
 
 handle_info([{<<"type">>,<<"pong">>},
              {<<"time">>,_Time},
              {<<"reply_to">>, ReplyId}], State) ->
     lager:info("got a pong from id ~p",[ReplyId]),
-    {noreply, State#state{current_ping=0}};
+    {noreply, State#state{waiting_pong=false}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
