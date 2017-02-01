@@ -122,7 +122,7 @@ start_link() ->
 init([]) ->
     {ok, [{token, Token}]} = file:consult(code:priv_dir(karlbot) ++ "/slack.config"),
 
-    {Pid, TeamDataMap, WsUrl} = get_teamdata(Token),
+    {Pid, TeamDataMap, WsUrl} = request_ws_channel(Token),
     WsPid = make_ws_connection(WsUrl),
 
     {ok, connecting, #state{pid=Pid, ws_pid=WsPid, teamdata=TeamDataMap, 
@@ -173,7 +173,7 @@ connected({send_text_file, ChannelName, Title, File}, State) ->
 
 connected({reconnect}, _State=#state{token=Token, ws_pid=OldWsPid}) ->
     gun:close(OldWsPid),
-    {Pid, TeamDataMap, WsUrl} = get_teamdata(Token),
+    {Pid, TeamDataMap, WsUrl} = request_ws_channel(Token),
     WsPid = make_ws_connection(WsUrl),
     {next_state, connecting, #state{pid=Pid, ws_pid=WsPid, teamdata=TeamDataMap, 
                            token=Token, message_id=0}};
@@ -350,14 +350,14 @@ ws_send_message(ChannelId, Message, State) ->
 
 make_ws_connection(false) ->
     0;
-make_ws_connection(Uri) ->
-    {ok, {_,_, Host, _,Url,_}} = http_uri:parse(binary_to_list(Uri),
-                            [{scheme_defaults, [{wss, 443}]}]),
+make_ws_connection(WsUrl) ->
+    {ok, {_, _, Host, _, Path, _}} =
+        http_uri:parse(binary_to_list(WsUrl), [{scheme_defaults, [{wss, 443}]}]),
     {ok, WsPid} = gun:open(Host, 443),
-    gun:ws_upgrade(WsPid, Url),
+    gun:ws_upgrade(WsPid, Path),
     WsPid.
 
-get_teamdata(Token) ->
+request_ws_channel(Token) ->
     {ok, Pid} = gun:open("slack.com", 443),
     StreamRef = gun:get(Pid, "/api/rtm.start?token=" ++ Token),
     {ok, Body} = gun:await_body(Pid, StreamRef, 10000),
