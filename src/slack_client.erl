@@ -18,7 +18,8 @@
          terminate/3,
          code_change/4]).
 
--export([get_self/0, 
+-export([get_self/0,
+         send_file/4, 
          send_text_file/3, 
          send_message/1, send_message/2,
          send_term/2, 
@@ -85,6 +86,9 @@ send_term(ChannelId, Term) ->
 -spec send_text_file(string(), string(), string()) -> term().
 send_text_file(ChannelId, File, Title) ->
     gen_fsm:send_event(?MODULE,{send_text_file, ChannelId, Title, File}).
+
+send_file(ChannelId, Binary, Filename, ContentType) ->
+    gen_fsm:send_event(?MODULE,{send_file, ChannelId, Binary, Filename, ContentType}).
 
 reconnect() ->
     gen_fsm:send_event(?MODULE,{reconnect}).
@@ -169,6 +173,10 @@ connected({chat_postmessage, ChannelId, Message, Attachment}, State) ->
 
 connected({send_text_file, ChannelName, Title, File}, State) ->
     http_send_text_file(ChannelName, Title, File, State),
+    {next_state, connected, State};
+
+connected({send_file, ChannelId, Binary, Filename, ContentType}, State) ->
+    http_send_file(ChannelId, Binary, Filename, ContentType, State),
     {next_state, connected, State};
 
 connected({reconnect}, _State=#state{token=Token, ws_pid=OldWsPid}) ->
@@ -325,6 +333,7 @@ http_post_chat(ChannelName, Message, Attachment, State) ->
     StreamRef = gun:get(State#state.pid, lists:flatten(Url)),
     gun:await_body(State#state.pid, StreamRef).
 
+
 http_send_text_file(ChannelName, _Title, File, State) ->
     Boundary = "---------------9999999",
     Form = http_stuff:format_multipart_formdata(Boundary, [], [{file,"file",File}]),
@@ -334,6 +343,16 @@ http_send_text_file(ChannelName, _Title, File, State) ->
                           {<<"content-type">>, "multipart/form-data; boundary=" 
                            ++ Boundary}], Form),
     gun:await_body(State#state.pid, StreamRef).
+
+http_send_file(ChannelName, Binary, Filename, ContentType, State) ->
+    Boundary = "---------------9999999",
+    Form = http_stuff:format_multipart_formdata_contenttype(Boundary, [], [{file, Filename, Binary}], ContentType),
+    StreamRef = gun:post(State#state.pid, "/api/files.upload?token=" ++
+                         State#state.token ++ "&channels=" ++ ChannelName,
+                         [{<<"content-length">>, length(Binary)},
+                          {<<"content-type">>, "multipart/form-data; boundary="
+                           ++Boundary}], Form),
+    Resp = gun:await_body(State#state.pid, StreamRef).
 
 ws_send_message(Message, State) ->
     Json = jsx:encode(Message),
