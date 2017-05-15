@@ -100,11 +100,10 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info([{<<"type">>,<<"message">>},
-             {<<"channel">>,ChannelId},
-             {<<"user">>, _UserId},
-             {<<"text">>, Text},_,_], State) ->
-    process_command(string:tokens(binary_to_list(Text)," "),ChannelId,State),
+handle_info(#{<<"type">> := <<"message">>,
+              <<"channel">> := ChannelId,
+              <<"text">> := Text}, State) ->
+    process_command(string:tokens(binary_to_list(Text)," "), ChannelId, State),
     {noreply, State};
 
 handle_info(_Info, State) ->
@@ -201,15 +200,12 @@ maybe_restart_plugin([Me,"restart", Plugin], ChannelId, Me, State) ->
 maybe_restart_plugin(_, _, _, _) ->
     false.
 
-get_handle(#{<<"id">> := Id}) ->
-    "\<\@" ++ binary_to_list(Id) ++ "\>:".
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 process_command(Tokens, ChannelId, State) ->
-    maybe_list_plugins(Tokens, ChannelId, get_handle(State#state.self), State),
-    maybe_load_plugin(Tokens, ChannelId, get_handle(State#state.self), State),
-    maybe_start_plugin(Tokens, ChannelId, get_handle(State#state.self)),
-    maybe_stop_plugin(Tokens, ChannelId, get_handle(State#state.self)),
-    maybe_restart_plugin(Tokens, ChannelId, get_handle(State#state.self), State).
+    maybe_list_plugins(Tokens, ChannelId, slack_client:get_handle(State#state.self), State),
+    maybe_load_plugin(Tokens, ChannelId, slack_client:get_handle(State#state.self), State),
+    maybe_start_plugin(Tokens, ChannelId, slack_client:get_handle(State#state.self)),
+    maybe_stop_plugin(Tokens, ChannelId, slack_client:get_handle(State#state.self)),
+    maybe_restart_plugin(Tokens, ChannelId, slack_client:get_handle(State#state.self), State).
 

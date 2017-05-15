@@ -41,9 +41,9 @@
 %%%===================================================================
 
 get_handle(#{<<"self">> := #{<<"id">> := Id}}) ->
-    "\<\@" ++ binary_to_list(Id) ++ "\>\:";
+    "\<\@" ++ binary_to_list(Id) ++ "\>";
 get_handle(#{<<"id">> := Id}) ->
-    "\<\@" ++ binary_to_list(Id) ++ "\>\:";
+    "\<\@" ++ binary_to_list(Id) ++ "\>";
 get_handle(_) ->
     false.
 
@@ -283,7 +283,7 @@ handle_info({gun_ws, _Pid, {text, Text}}, connecting, State) ->
     end;
 
 handle_info({gun_ws, _Pid, {text, Text}}, connected, State) ->
-    Json = jsx:decode(Text),
+    Json = jsx:decode(Text, [return_maps]),
     syn:publish(slack_messages, Json),
     {next_state, connected, State};
 
