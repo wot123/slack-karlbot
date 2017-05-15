@@ -22,7 +22,7 @@ Clone the example plugins repo to priv/plugins
 In Slack
 -----
 
-    @botname: load linusbot  
+    @botname load linusbot  
     ok  
-    @botname: start linusbot  
+    @botname start linusbot  
     linusbot: started  
