@@ -31,6 +31,7 @@ Docker
 -----
 
 Build the container
+
     docker build -t karlbot .
 
 Run the container
