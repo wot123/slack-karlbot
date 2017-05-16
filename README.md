@@ -34,7 +34,7 @@ Build the container
 
     docker build -t karlbot .
 
-Run the container
+Run the container  
     create a directory containing your config files and plugins then:
 
     docker run -v my_priv_directory:/home/karlbot/lib/karlbot-0.1.0/priv -d -t karlbot
