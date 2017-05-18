@@ -112,10 +112,8 @@ handle_info({send_ping}, State) ->
     slack_client:reconnect(),
     {noreply, State#state{waiting_pong=false}};
 
-
-handle_info([{<<"type">>,<<"pong">>},
-             {<<"time">>,_Time},
-             {<<"reply_to">>, ReplyId}], State) ->
+handle_info(#{<<"type">> := <<"pong">>,
+              <<"reply_to">> :=  ReplyId}, State) ->
     lager:info("got a pong from id ~p",[ReplyId]),
     {noreply, State#state{waiting_pong=false}};
 
