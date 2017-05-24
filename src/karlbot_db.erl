@@ -14,7 +14,7 @@
          terminate/2,
          code_change/3]).
 
--export([get/1, put/2]).
+-export([get/1, put/2, replace/2]).
 
 -record(state, {database}).
 
@@ -27,6 +27,9 @@ get(Key) ->
 
 put(Key, Value) ->
     gen_server:call(?MODULE, {put, Key, Value}).
+
+replace(Key, Value) ->
+    gen_server:call(?MODULE, {replace, Key, Value}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -81,6 +84,10 @@ handle_call({get, Key}, _From, State) ->
 
 handle_call({put, Key, Value}, _From, State) ->
     Reply = karlbot_db_put(Key, Value, State#state.database),
+    {reply, Reply, State};
+
+handle_call({replace, Key, Value}, _From, State) ->
+    Reply = karlbot_db_replace(Key, Value, State#state.database),
     {reply, Reply, State};
 
 handle_call(_Request, _From, State) ->
@@ -157,11 +164,17 @@ check_db(DB) ->
     install_db(DbExists, DB).
 
 
+return_get_data([{Data}]) ->
+    binary_to_term(Data);
+return_get_data(_) ->
+    [].
 
 karlbot_db_get(Key, DB) ->
-    [{Data}] = esqlite3:q("SELECT value FROM karlbot_data WHERE key = ?;", [Key], DB),
-    
-    binary_to_term(Data).
+    Data = esqlite3:q("SELECT value FROM karlbot_data WHERE key = ?;", [Key], DB),
+    return_get_data(Data).
 
 karlbot_db_put(Key, Value, DB) ->
     esqlite3:exec("INSERT INTO karlbot_data values (?,?);", [Key,term_to_binary(Value)], DB).
+
+karlbot_db_replace(Key, Value, DB) ->
+    esqlite3:exec("UPDATE karlbot_data SET value = ? WHERE key = ?;", [term_to_binary(Value), Key], DB).
