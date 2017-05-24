@@ -19,7 +19,7 @@
     cowboy,
     gun,
     luerl,
-    esqlite3
+    esqlite
    ]},
   {env,[]},
   {modules, []},
