@@ -18,7 +18,8 @@
     cowlib,
     cowboy,
     gun,
-    luerl
+    luerl,
+    esqlite3
    ]},
   {env,[]},
   {modules, []},
