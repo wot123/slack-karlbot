@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%% @doc karlbot top level supervisor.
+    %% @doc karlbot top level supervisor.
 %% @end
 %%%-------------------------------------------------------------------
 
@@ -33,7 +33,8 @@ init([]) ->
     ChildSpecs = [
         ?CHILD(slack_client, worker),
         ?CHILD(plugin_manager, worker),
-        ?CHILD(slack_pinger, worker)
+        ?CHILD(slack_pinger, worker),
+        ?CHILD(karlbot_db, worker)
     ],       
     {ok, { {one_for_one, 5, 10}, ChildSpecs} }.
 
